@@ -373,6 +373,26 @@ export function runImageWatermarkPipeline({
         };
     }
 
+    // Combine all completed candidates: start with the original image and
+    // apply each completed candidate's alpha map to remove its watermark.
+    // This ensures every detected watermark layer (largest and the other
+    // two) is removed while still being detected and reported individually.
+    const combinedImageData = new ImageData(
+        new Uint8ClampedArray(originalImageData.data),
+        originalImageData.width,
+        originalImageData.height
+    );
+    for (const candidate of completed) {
+        const alphaMap = candidate.pipelineState?.alphaMap;
+        const position = candidate.pipelineState?.position;
+        const alphaGain = candidate.pipelineState?.alphaGain;
+        if (alphaMap && position) {
+            removeWatermark(combinedImageData, alphaMap, position, {
+                alphaGain: Number.isFinite(alphaGain) && alphaGain > 0 ? alphaGain : 1
+            });
+        }
+    }
+
     const rankingStartedAt = nowMs();
     const ranked = rankCandidates(completed);
     const best = rerunWithAreaAlpha({
@@ -431,6 +451,7 @@ export function runImageWatermarkPipeline({
 
     return {
         ...best.result,
+        imageData: combinedImageData,
         meta,
         debugTimings: combinedDebugTimings
     };
