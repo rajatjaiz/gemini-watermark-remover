@@ -1565,6 +1565,20 @@ export async function detectVideoWatermarkFromFramesAsync({
         veoTextDetection
     });
 
+    // LOGGING: Report total detections detected across all candidates
+    const detectionSummary = {
+        diamondDetections: diamondDetection?.detections?.length || 0,
+        veoTextDetections: veoTextDetection?.detections?.length || 0,
+        selectedDetections: selected?.detections?.length || 0
+    };
+    console.log('[WMR-DEBUG] Detection summary:', JSON.stringify(detectionSummary));
+    if (selected?.detections) {
+        console.log('[WMR-DEBUG] Selected detection has', selected.detections.length, 'watermarks:');
+        selected.detections.forEach((d, i) => {
+            console.log('[WMR-DEBUG]  ' + i + ': candidate=' + d.candidate?.id + ', position=' + JSON.stringify(d.position) + ', meanConfidence=' + (d.meanConfidence?.toFixed(4) || 'N/A'));
+        });
+    }
+
     if (!selected) {
         if (!Array.isArray(candidates) || candidates.length === 0) {
             throw new Error('Unsupported video watermark candidates for ' + width + 'x' + height);
