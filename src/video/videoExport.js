@@ -859,37 +859,47 @@ export async function processVideoWatermarkFrame(ctx, detection, trackStates = n
     // Process ALL frames using the original detection result (from sampled frames)
     // This ensures consistent watermark removal across all frames, even when
     // per-frame confidence dips below threshold due to glowing/dimming effects
-    const selectedDetection = detection;
-    const trackId = selectedDetection?.candidate?.id || [
-        selectedDetection?.position?.x,
-        selectedDetection?.position?.y,
-        selectedDetection?.position?.width,
-        selectedDetection?.position?.height
-    ].join(':');
-    const trackState = trackStates.get(trackId) || {};
-    const frameResult = await processWatermarkRoiAsync(ctx, selectedDetection, {
-        ...options,
-        seedAlphaGain: selectedDetection?.alphaSeed?.seedGain ?? options.seedAlphaGain ?? DEFAULT_ALPHA_GAIN,
-        previousAlphaGain: trackState.previousAlphaGain ?? null,
-        previousTemporalRoi: trackState.previousTemporalRoi ?? null,
-        previousTemporalDeltaFrame: trackState.previousTemporalDeltaFrame ?? null,
-        previousTemporalMatchDeltaFrame: trackState.previousTemporalMatchDeltaFrame ?? null,
-        allenkFdncnnFrameCache: trackState.allenkFdncnnFrameCache ?? options.allenkFdncnnFrameCache ?? {}
-    });
+    // Also processes ALL detected watermarks (largest + medium + small) by iterating
+    // through the detections array from the detection result
+    const detections = detection?.detections || [detection];
+    const frameResults = [];
 
-    trackState.previousAlphaGain = frameResult.alphaGain;
-    trackState.previousTemporalRoi = frameResult.skipped ? null : frameResult.temporalRoi || null;
-    trackState.previousTemporalDeltaFrame = frameResult.skipped ? null : frameResult.temporalDeltaFrame || null;
-    trackState.previousTemporalMatchDeltaFrame = frameResult.skipped
-        ? null
-        : frameResult.temporalMatchDeltaFrame || null;
-    trackState.allenkFdncnnFrameCache = trackState.allenkFdncnnFrameCache ?? options.allenkFdncnnFrameCache ?? {};
-    trackStates.set(trackId, trackState);
+    for (const wdDetection of detections) {
+        const candidate = wdDetection?.candidate || detection?.candidate;
+        const trackId = candidate?.id || [
+            wdDetection?.position?.x,
+            wdDetection?.position?.y,
+            wdDetection?.position?.width,
+            wdDetection?.position?.height
+        ].join(':');
+        const trackState = trackStates.get(trackId) || {};
+        const frameResult = await processWatermarkRoiAsync(ctx, wdDetection, {
+            ...options,
+            seedAlphaGain: wdDetection?.alphaSeed?.seedGain ?? options.seedAlphaGain ?? DEFAULT_ALPHA_GAIN,
+            previousAlphaGain: trackState.previousAlphaGain ?? null,
+            previousTemporalRoi: trackState.previousTemporalRoi ?? null,
+            previousTemporalDeltaFrame: trackState.previousTemporalDeltaFrame ?? null,
+            previousTemporalMatchDeltaFrame: trackState.previousTemporalMatchDeltaFrame ?? null,
+            allenkFdncnnFrameCache: trackState.allenkFdncnnFrameCache ?? options.allenkFdncnnFrameCache ?? {}
+        });
+        frameResults.push(frameResult);
 
+        trackState.previousAlphaGain = frameResult.alphaGain;
+        trackState.previousTemporalRoi = frameResult.skipped ? null : frameResult.temporalRoi || null;
+        trackState.previousTemporalDeltaFrame = frameResult.skipped ? null : frameResult.temporalDeltaFrame || null;
+        trackState.previousTemporalMatchDeltaFrame = frameResult.skipped
+            ? null
+            : frameResult.temporalMatchDeltaFrame || null;
+        trackState.allenkFdncnnFrameCache = trackState.allenkFdncnnFrameCache ?? options.allenkFdncnnFrameCache ?? {};
+        trackStates.set(trackId, trackState);
+    }
+
+    // Merge frame results - use the last one's selectedDetection
+    const lastResult = frameResults[frameResults.length - 1];
     return {
-        ...frameResult,
-        selectedDetection,
-        selection
+        ...lastResult,
+        selectedDetection: detection,
+        frameResults,
     };
 }
 
