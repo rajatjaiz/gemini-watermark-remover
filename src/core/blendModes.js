@@ -28,12 +28,13 @@ export function removeWatermark(imageData, alphaMap, position, options = {}) {
         ? options.alphaGain
         : 1;
 
-    // Step 1: Apply halo damping — reduce alpha values near the edges of the
-    // watermark region to remove the "outline" (positive/negative halo) artifacts
-    // that appear when the alpha map transitions sharply at the boundary.
+    // Step 1: Apply halo damping — smooth, Gaussian-like falloff to reduce alpha
+    // near the edges of the watermark region. This eliminates the "outline"
+    // (positive/negative halo) artifacts that appear when the alpha map
+    // transitions sharply at the boundary.
     const haloDampedAlpha = new Float32Array(alphaMap.length);
-    const edgeFade = 0.35; // fade strength for edge pixels
-    const edgeRadius = 2;  // number of pixels to fade at each edge
+    const edgeFade = 0.55; // fade strength for edge pixels (Gaussian falloff)
+    const edgeRadius = 4;  // number of pixels to fade at each edge (Gaussian sigma)
     for (let row = 0; row < height; row++) {
         for (let col = 0; col < width; col++) {
             // Compute normalized distance from each edge (0 = center, 1 = edge)
@@ -42,13 +43,15 @@ export function removeWatermark(imageData, alphaMap, position, options = {}) {
             const distFromLeft = col / width;
             const distFromRight = (width - 1 - col) / width;
             const minDist = Math.min(distFromTop, distFromBottom, distFromLeft, distFromRight);
-            // Apply linear fade: alpha multiplied by (1 - edgeFade * minDist)
-            const fade = Math.max(0, 1 - edgeFade * minDist);
+            // Apply Gaussian-like fade: exp(-d^2 / (2*sigma^2)) where d = minDist, sigma = edgeRadius
+            const sigma = edgeRadius;
+            const expArg = -(minDist * minDist) / (2.0 * sigma * sigma);
+            const fade = Math.exp(Math.max(-30, expArg));
             haloDampedAlpha[row * width + col] = alphaMap[row * width + col] * fade;
         }
     }
 
-    // Process each pixel in the watermark area
+    // Step 2: Process each pixel in the watermark area
     for (let row = 0; row < height; row++) {
         for (let col = 0; col < width; col++) {
             // Calculate index in original image (RGBA format, 4 bytes per pixel)
@@ -73,7 +76,9 @@ export function removeWatermark(imageData, alphaMap, position, options = {}) {
                 continue;
             }
 
-            // Use original alpha for inverse solve; use denoised alpha as activation signal.
+            // Use the halo-damped alpha for the inverse solve. The damping
+            // ensures the alpha used for blending is reduced at the edges,
+            // eliminating the outline artifact.
             const alpha = Math.min(alphaMagnitude * alphaGain, MAX_ALPHA);
             const oneMinusAlpha = 1.0 - alpha;
 
@@ -93,3 +98,4 @@ export function removeWatermark(imageData, alphaMap, position, options = {}) {
         }
     }
 }
+
