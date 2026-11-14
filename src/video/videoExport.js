@@ -856,8 +856,10 @@ async function processWatermarkRoiAsync(ctx, detection, options) {
 }
 
 export async function processVideoWatermarkFrame(ctx, detection, trackStates = new Map(), options = {}) {
-    const selection = selectVideoWatermarkDetectionForFrame(ctx, detection);
-    const selectedDetection = selection?.detection || detection;
+    // Process ALL frames using the original detection result (from sampled frames)
+    // This ensures consistent watermark removal across all frames, even when
+    // per-frame confidence dips below threshold due to glowing/dimming effects
+    const selectedDetection = detection;
     const trackId = selectedDetection?.candidate?.id || [
         selectedDetection?.position?.x,
         selectedDetection?.position?.y,
