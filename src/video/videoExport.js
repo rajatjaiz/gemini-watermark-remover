@@ -864,6 +864,9 @@ export async function processVideoWatermarkFrame(ctx, detection, trackStates = n
     const detections = detection?.detections || [detection];
     const frameResults = [];
 
+    // LOGGING: Report total watermark detections found in this frame
+    console.log('[WMR-DEBUG] Frame processing: total detections to process = ' + detections.length);
+
     for (const wdDetection of detections) {
         const candidate = wdDetection?.candidate || detection?.candidate;
         const trackId = candidate?.id || [
@@ -873,6 +876,15 @@ export async function processVideoWatermarkFrame(ctx, detection, trackStates = n
             wdDetection?.position?.height
         ].join(':');
         const trackState = trackStates.get(trackId) || {};
+
+        // LOGGING: Report each watermark detection in the frame
+        console.log('[WMR-DEBUG]  Processing watermark ' + detections.indexOf(wdDetection) + ': candidate=' + candidate?.id + ', position=' + JSON.stringify(wdDetection?.position) + ', meanConfidence=' + (wdDetection?.meanConfidence?.toFixed(4) || 'N/A'));
+
+        // LOGGING: Check if this watermark will pass threshold (for debugging)
+        // Note: full threshold check happens in processWatermarkRoiAsync
+        if (wdDetection?.meanConfidence !== undefined) {
+            console.log('[WMR-DEBUG]  Confidence: ' + wdDetection.meanConfidence + ', threshold: ' + options.lowConfidenceThreshold + ', willPass=' + (wdDetection.meanConfidence >= options.lowConfidenceThreshold));
+        }
         const frameResult = await processWatermarkRoiAsync(ctx, wdDetection, {
             ...options,
             seedAlphaGain: wdDetection?.alphaSeed?.seedGain ?? options.seedAlphaGain ?? DEFAULT_ALPHA_GAIN,
