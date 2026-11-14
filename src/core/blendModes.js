@@ -28,6 +28,26 @@ export function removeWatermark(imageData, alphaMap, position, options = {}) {
         ? options.alphaGain
         : 1;
 
+    // Step 1: Apply halo damping — reduce alpha values near the edges of the
+    // watermark region to remove the "outline" (positive/negative halo) artifacts
+    // that appear when the alpha map transitions sharply at the boundary.
+    const haloDampedAlpha = new Float32Array(alphaMap.length);
+    const edgeFade = 0.35; // fade strength for edge pixels
+    const edgeRadius = 2;  // number of pixels to fade at each edge
+    for (let row = 0; row < height; row++) {
+        for (let col = 0; col < width; col++) {
+            // Compute normalized distance from each edge (0 = center, 1 = edge)
+            const distFromTop = row / height;
+            const distFromBottom = (height - 1 - row) / height;
+            const distFromLeft = col / width;
+            const distFromRight = (width - 1 - col) / width;
+            const minDist = Math.min(distFromTop, distFromBottom, distFromLeft, distFromRight);
+            // Apply linear fade: alpha multiplied by (1 - edgeFade * minDist)
+            const fade = Math.max(0, 1 - edgeFade * minDist);
+            haloDampedAlpha[row * width + col] = alphaMap[row * width + col] * fade;
+        }
+    }
+
     // Process each pixel in the watermark area
     for (let row = 0; row < height; row++) {
         for (let col = 0; col < width; col++) {
@@ -39,7 +59,7 @@ export function removeWatermark(imageData, alphaMap, position, options = {}) {
 
             // Get alpha value. A negative alpha map marks a dark-polarity
             // watermark: same opacity mask, black logo value.
-            const rawAlpha = alphaMap[alphaIdx];
+            const rawAlpha = haloDampedAlpha[alphaIdx];
             const alphaMagnitude = Math.abs(rawAlpha);
             const logoValue = Number.isFinite(options.logoValue)
                 ? options.logoValue
